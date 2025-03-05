@@ -98,6 +98,7 @@ impl Client {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) async fn dump_response<Body: RequestBody>(
         &self,
         method: Method,

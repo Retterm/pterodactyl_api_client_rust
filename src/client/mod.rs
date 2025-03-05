@@ -72,7 +72,7 @@ impl Client {
     }
 
     #[cfg(test)]
-    pub(crate) fn get_test_server(&self) -> Server {
+    pub(crate) fn get_test_server(&self) -> Server<'_> {
         self.get_server(
             std::env::var("TEST_SERVER").expect("Expected TEST_SERVER in environment variables"),
         )
