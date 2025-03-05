@@ -5,8 +5,8 @@ edition = "2021"
 license = "MIT"
 readme = "README.md"
 description = "Library to interface with the Pterodactyl API"
-homepage = "https://github.com/retterm/pterodactyl_api_client_rust"
-repository = "https://github.com/retterm/pterodactyl_api_client_rust"
+homepage = "https://github.com/Retterm/pterodactyl_api_client_rust"
+repository = "https://github.com/Retterm/pterodactyl_api_client_rust"
 
 [features]
 stream = ["reqwest/stream", "futures-core"]
