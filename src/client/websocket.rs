@@ -91,7 +91,7 @@ pub trait PteroWebSocketHandle: Send + sealed::Sealed {
 }
 
 /// Server stats received from a websocket
-#[derive(Debug, Deserialize, Copy, Clone)]
+#[derive(Debug, Deserialize, Copy, Clone, Serialize)]
 #[non_exhaustive]
 pub struct ServerStats {
     /// The used memory of the server in bytes
@@ -109,7 +109,7 @@ pub struct ServerStats {
 }
 
 /// Server network stats received from a websocket
-#[derive(Debug, Deserialize, Copy, Clone)]
+#[derive(Debug, Deserialize, Copy, Clone, Serialize)]
 pub struct ServerNetworkStats {
     /// Number of bytes received
     pub rx_bytes: u64,
