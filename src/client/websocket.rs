@@ -5,7 +5,7 @@ use crate::Error::WebsocketTokenExpired;
 use async_tungstenite::tungstenite::Message;
 use async_tungstenite::WebSocketStream;
 use futures_io::{AsyncRead, AsyncWrite};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use reqwest::Method;
 use serde::de::value::StrDeserializer;
 use serde::{Deserialize, Serialize};
@@ -187,7 +187,7 @@ where
         self.auth(token).await?;
         while let Some(message) = self.socket.next().await {
             if let Message::Text(message) = message? {
-                if self.handle_message(message).await? {
+                if self.handle_message(message.to_string()).await? {
                     break;
                 }
             } else {
