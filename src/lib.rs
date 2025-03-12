@@ -83,6 +83,7 @@
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 
+pub mod application;
 pub mod client;
 mod http;
 mod structs;
