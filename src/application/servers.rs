@@ -1,8 +1,12 @@
-use crate::application::{Client, structs::CreateServerRequest, structs::CreateServerResponse};
+use std::collections::HashMap;
+use urlencoding::encode;
+
 use crate::application::structs::ServerStruct;
+use crate::application::{structs::CreateServerRequest, structs::CreateServerResponse, Client};
 use crate::http::EmptyBody;
 use crate::structs::{PteroList, PteroObject};
 use reqwest::Method;
+use serde::{Deserialize, Serialize};
 
 impl Client {
     /// Lists all servers in the application
@@ -30,6 +34,63 @@ impl Client {
     /// ```
     pub async fn list_servers(&self) -> crate::Result<Vec<ServerStruct>> {
         self.request::<PteroList<ServerStruct>>(Method::GET, "servers")
+            .await
+            .map(|servers| servers.data)
+    }
+
+    /// Lists servers with query parameters (filters/pagination/include/sort)
+    ///
+    /// This wraps GET /api/application/servers with optional query parameters supported by
+    /// the latest Pterodactyl API, such as `filter[uuid]`, `filter[name]`, `filter[external_id]`,
+    /// `per_page`, `page`, `include`, and `sort`.
+    pub async fn list_servers_filtered(
+        &self,
+        filter_name: Option<&str>,
+        filter_uuid: Option<&str>,
+        filter_external_id: Option<&str>,
+        filter_image: Option<&str>,
+        include: Option<&[&str]>,
+        sort: Option<&str>,
+        per_page: Option<u32>,
+        page: Option<u32>,
+    ) -> crate::Result<Vec<ServerStruct>> {
+        let mut pairs: Vec<String> = Vec::new();
+
+        if let Some(v) = filter_name {
+            pairs.push(format!("{}={}", encode("filter[name]"), encode(v)));
+        }
+        if let Some(v) = filter_uuid {
+            pairs.push(format!("{}={}", encode("filter[uuid]"), encode(v)));
+        }
+        if let Some(v) = filter_external_id {
+            pairs.push(format!("{}={}", encode("filter[external_id]"), encode(v)));
+        }
+        if let Some(v) = filter_image {
+            pairs.push(format!("{}={}", encode("filter[image]"), encode(v)));
+        }
+        if let Some(v) = include {
+            if !v.is_empty() {
+                pairs.push(format!("{}={}", encode("include"), encode(&v.join(","))));
+            }
+        }
+        if let Some(v) = sort {
+            pairs.push(format!("{}={}", encode("sort"), encode(v)));
+        }
+        if let Some(v) = per_page {
+            pairs.push(format!("{}={}", encode("per_page"), encode(&v.to_string())));
+        }
+        if let Some(v) = page {
+            pairs.push(format!("{}={}", encode("page"), encode(&v.to_string())));
+        }
+
+        let qs = pairs.join("&");
+        let endpoint = if qs.is_empty() {
+            "servers".to_string()
+        } else {
+            format!("servers?{}", qs)
+        };
+
+        self.request::<PteroList<ServerStruct>>(Method::GET, &endpoint)
             .await
             .map(|servers| servers.data)
     }
@@ -106,14 +167,13 @@ impl Client {
     ///     }
     /// }
     /// ```
-    pub async fn create_server(&self, request: CreateServerRequest) -> crate::Result<CreateServerResponse> {
-        self.request_with_body::<PteroObject<CreateServerResponse>, _>(
-            Method::POST,
-            "servers",
-            &request,
-        )
-        .await
-        .map(|response| response.attributes)
+    pub async fn create_server(
+        &self,
+        request: CreateServerRequest,
+    ) -> crate::Result<CreateServerResponse> {
+        self.request_with_body::<CreateServerResponse, _>(Method::POST, "servers", &request)
+            .await
+            .map(|response| response)
     }
 
     /// Deletes a server with the specified ID
@@ -165,18 +225,170 @@ impl Client {
             .await?;
         Ok(())
     }
+
+    /// Updates server build limits (CPU/Memory/Disk/IO/Swap/Threads)
+    pub async fn update_server_build(
+        &self,
+        id: u32,
+        limits: crate::application::structs::ServerLimits,
+    ) -> crate::Result<()> {
+        #[derive(Serialize)]
+        struct UpdateBuildBody {
+            memory: u32,
+            swap: u32,
+            disk: u32,
+            io: u32,
+            cpu: u32,
+            allocation: u32,
+            feature_limits: crate::application::structs::ServerFeatureLimits,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            threads: Option<u32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            oom_disabled: Option<bool>,
+        }
+
+        // 获取当前服务器以填充必填但未变更的字段
+        let current = self.get_server(id).await?;
+
+        let body = UpdateBuildBody {
+            memory: limits.memory,
+            swap: limits.swap,
+            disk: limits.disk,
+            io: limits.io,
+            cpu: limits.cpu,
+            allocation: current.allocation,
+            feature_limits: current.feature_limits,
+            threads: limits.threads,
+            oom_disabled: limits.oom_disabled,
+        };
+
+        self.request_with_body::<EmptyBody, _>(
+            Method::PATCH,
+            &format!("servers/{}/build", id),
+            &body,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Updates the startup variables for a server
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use pterodactyl_api_client_rust::application::ClientBuilder;
+    ///
+    /// ```no_run
+    /// let client = ClientBuilder::new("https://pterodactyl.example.com", "your-api-key")
+    ///     .build();
+    ///
+    /// let startup = "java -Xms128M -Xmx128M -jar server.jar".to_string();
+    /// let environment = HashMap::new();
+    /// let egg = "1".to_string();
+    /// let image = "quay.io/pterodactyl/core:java".to_string();
+    /// let skip_scripts = false;
+    ///
+    /// let result = client.update_startup_variables(1, startup, environment, egg, image, skip_scripts).await;
+    /// ```
+    pub async fn update_startup_variables(
+        &self,
+        id: u32,
+        startup: String,
+        environment: HashMap<String, String>,
+        egg: String,
+        image: String,
+        skip_scripts: bool,
+    ) -> crate::Result<()> {
+        let body = UpdateStartupVariablesRequest {
+            startup,
+            environment,
+            egg,
+            image,
+            skip_scripts,
+        };
+        self.request_with_body::<EmptyBody, _>(
+            Method::PATCH,
+            &format!("servers/{}/startup", id),
+            &body,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Suspends a server with the specified ID
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use pterodactyl_api_client_rust::application::ClientBuilder;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let client = ClientBuilder::new("https://pterodactyl.example.com", "your-api-key")
+    ///         .build();
+    ///
+    ///     match client.suspend_server(1).await {
+    ///         Ok(_) => println!("Server suspended successfully"),
+    ///         Err(e) => eprintln!("Error suspending server: {}", e),
+    ///     }
+    /// }
+    /// ```
+    pub async fn suspend_server(&self, id: u32) -> crate::Result<()> {
+        self.request::<EmptyBody>(Method::POST, &format!("servers/{}/suspend", id))
+            .await?;
+        Ok(())
+    }
+
+    /// Resumes a server with the specified ID
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use pterodactyl_api_client_rust::application::ClientBuilder;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let client = ClientBuilder::new("https://pterodactyl.example.com", "your-api-key")
+    ///         .build();
+    ///
+    ///     match client.resume_server(1).await {
+    ///         Ok(_) => println!("Server resumed successfully"),
+    ///         Err(e) => eprintln!("Error resuming server: {}", e),
+    ///     }
+    /// }
+    /// ```
+    pub async fn resume_server(&self, id: u32) -> crate::Result<()> {
+        self.request::<EmptyBody>(Method::POST, &format!("servers/{}/resume", id))
+            .await?;
+        Ok(())
+    }
+}
+
+///
+///
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UpdateStartupVariablesRequest {
+    startup: String,
+    environment: HashMap<String, String>,
+    egg: String,
+    image: String,
+    skip_scripts: bool,
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::application::{ClientBuilder, structs::{ServerLimits, ServerFeatureLimits, AllocationSettings}};
+    use crate::application::{
+        structs::{AllocationSettings, ServerFeatureLimits, ServerLimits},
+        ClientBuilder,
+    };
     use std::collections::HashMap;
 
     fn make_test_client() -> Client {
         ClientBuilder::new(
             std::env::var("API_URL").expect("Expected API_URL in environment variables"),
-            std::env::var("APPLICATION_API_KEY").expect("Expected APPLICATION_API_KEY in environment variables"),
+            std::env::var("APPLICATION_API_KEY")
+                .expect("Expected APPLICATION_API_KEY in environment variables"),
         )
         .build()
     }
@@ -226,6 +438,7 @@ mod test {
                 io: 500,
                 cpu: 100,
                 threads: None,
+                oom_disabled: None,
             },
             feature_limits: ServerFeatureLimits {
                 databases: 5,
@@ -263,4 +476,4 @@ mod test {
         println!("Force delete server result: {:?}", result);
         assert!(result.is_ok());
     }
-} 
+}

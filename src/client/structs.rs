@@ -107,7 +107,7 @@ pub struct ServerFeatureLimits {
 }
 
 /// The status of a server
-#[derive(Debug, Deserialize, PartialEq, Eq, Hash, Copy, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Copy, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum ServerStatus {
     /// This server is being installed

@@ -1,7 +1,9 @@
 //! API for endpoints under `api/client/servers/{server}/startup`
 
-use crate::client::Server;
+use std::collections::HashMap;
+
 use crate::structs::PteroObject;
+use crate::{client::Server, http::EmptyBody};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +17,8 @@ pub struct StartupData {
     pub raw_startup_command: String,
     /// The startup variables
     pub variables: Vec<Variable>,
+    /// The docker images for this server
+    pub docker_images: HashMap<String, String>,
 }
 
 /// A startup variable
@@ -44,6 +48,7 @@ impl Server<'_> {
         struct StartupMeta {
             startup_command: String,
             raw_startup_command: String,
+            docker_images: HashMap<String, String>,
         }
         #[derive(Deserialize)]
         struct StartupDataObj {
@@ -57,6 +62,7 @@ impl Server<'_> {
                 startup_command: data.meta.startup_command,
                 raw_startup_command: data.meta.raw_startup_command,
                 variables: data.data.into_iter().map(|var| var.attributes).collect(),
+                docker_images: data.meta.docker_images,
             })
     }
 
@@ -82,5 +88,27 @@ impl Server<'_> {
             )
             .await
             .map(|variable| variable.attributes)
+    }
+
+    /// Sets the docker image for this server
+    pub async fn set_docker_image(&self, docker_image: impl Into<String>) -> crate::Result<()> {
+        #[derive(Serialize)]
+        struct SetDockerImageBody {
+            docker_image: String,
+        }
+        match self
+            .client
+            .request_with_body::<EmptyBody, _>(
+                Method::PUT,
+                &format!("servers/{}/settings/docker-image", self.id),
+                &SetDockerImageBody {
+                    docker_image: docker_image.into(),
+                },
+            )
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
     }
 }

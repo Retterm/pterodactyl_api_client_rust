@@ -27,9 +27,13 @@ where
         .map_err(|err| <D::Error as serde::de::Error>::custom(format!("{err}")))
 }
 
-#[derive(Deserialize)]
-pub(crate) struct PteroObject<T> {
-    pub(crate) attributes: T,
+/// Represents a PteroObject in the API
+#[derive(Deserialize, Debug)]
+pub struct PteroObject<T> {
+    /// The object type
+    pub object: Option<String>,
+    /// The object type
+    pub attributes: T,
 }
 
 #[derive(Deserialize)]

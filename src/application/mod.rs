@@ -4,6 +4,10 @@ use crate::http::EmptyBody;
 use reqwest::Method;
 use std::sync::RwLock;
 
+/// Nest and egg related endpoints for the application API
+pub mod nests;
+/// Node-related endpoints for the application API
+pub mod nodes;
 /// Server-related endpoints for the application API
 pub mod servers;
 /// Data structures for the application API
@@ -44,7 +48,10 @@ impl Client {
     }
 
     /// Makes a request with a body to the Pterodactyl application API
-    pub(crate) async fn request_with_body<Response: crate::http::ResponseBody, Body: crate::http::RequestBody>(
+    pub(crate) async fn request_with_body<
+        Response: crate::http::ResponseBody,
+        Body: crate::http::RequestBody,
+    >(
         &self,
         method: Method,
         endpoint: &str,
@@ -57,8 +64,28 @@ impl Client {
         .await
     }
 
+    #[allow(dead_code)]
+    pub(crate) async fn request_with_body_return_string<
+        Response: crate::http::ResponseBody,
+        Body: crate::http::RequestBody,
+    >(
+        &self,
+        method: Method,
+        endpoint: &str,
+        body: Body,
+    ) -> crate::Result<String> {
+        let re = self
+            .get_response::<_, crate::http::NullErrorHandler>(method, endpoint, body)
+            .await;
+        println!("re: {:?}", re);
+        Ok(re.unwrap().text().await.unwrap())
+    }
+
     /// Gets a response from the Pterodactyl application API
-    pub(crate) async fn get_response<Body: crate::http::RequestBody, EHandler: crate::http::ErrorHandler>(
+    pub(crate) async fn get_response<
+        Body: crate::http::RequestBody,
+        EHandler: crate::http::ErrorHandler,
+    >(
         &self,
         method: Method,
         endpoint: &str,
@@ -71,10 +98,12 @@ impl Client {
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key));
         let request = body.encode(request)?;
+
         let response = request.send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
+            println!("status: {:?}", status);
             if let Some(err) = EHandler::get_error(response).await {
                 return Err(err);
             }
@@ -155,4 +184,4 @@ impl ClientBuilder {
             rate_limits: RwLock::new(None),
         }
     }
-} 
+}

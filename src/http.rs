@@ -26,6 +26,19 @@ impl Client {
         .await
     }
 
+    pub(crate) async fn request_with_text_body<Response: ResponseBody, Body: RequestBody>(
+        &self,
+        method: Method,
+        endpoint: &str,
+        body: Body,
+    ) -> crate::Result<Response> {
+        Response::decode(
+            self.get_response_with_text_body::<_, NullErrorHandler>(method, endpoint, body)
+                .await?,
+        )
+        .await
+    }
+
     pub(crate) async fn request_with_error_handler<
         Response: ResponseBody,
         Body: RequestBody,
@@ -51,17 +64,64 @@ impl Client {
     ) -> crate::Result<Response> {
         let request = self
             .client
-            .request(method, format!("{}{}", self.url, endpoint))
+            .request(method.clone(), format!("{}{}", self.url, endpoint))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key));
         let request = body.encode(request)?;
+
         let response = request.send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
-            if let Some(err) = EHandler::get_error(response).await {
-                return Err(err);
+            if let Ok(st) = response.text().await {
+                println!("{}", st);
+            }
+            return Err(Self::translate_error(status));
+        }
+
+        if let Some(limit) = response
+            .headers()
+            .get("x-ratelimit-limit")
+            .and_then(|header| header.to_str().ok())
+            .and_then(|header| header.parse().ok())
+        {
+            if let Some(limit_remaining) = response
+                .headers()
+                .get("x-ratelimit-remaining")
+                .and_then(|header| header.to_str().ok())
+                .and_then(|header| header.parse().ok())
+            {
+                *self.rate_limits.write().unwrap() = Some(RateLimits {
+                    limit,
+                    limit_remaining,
+                });
+            }
+        }
+
+        Ok(response)
+    }
+
+    pub(crate) async fn get_response_with_text_body<Body: RequestBody, EHandler: ErrorHandler>(
+        &self,
+        method: Method,
+        endpoint: &str,
+        body: Body,
+    ) -> crate::Result<Response> {
+        let request = self
+            .client
+            .request(method.clone(), format!("{}{}", self.url, endpoint))
+            .header("Accept", "application/json")
+            .header("Content-Type", "text/plain")
+            .header("Authorization", format!("Bearer {}", self.api_key));
+        let request = body.encode(request)?;
+
+        let response = request.send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            if let Ok(st) = response.text().await {
+                println!("{}", st);
             }
             return Err(Self::translate_error(status));
         }
@@ -165,6 +225,7 @@ pub(crate) trait ErrorHandler {
 pub(crate) struct NullErrorHandler;
 impl ErrorHandler for NullErrorHandler {
     async fn get_error(_response: Response) -> Option<crate::Error> {
+        println!("response: {:?}", _response.text().await.unwrap());
         None
     }
 }

@@ -88,6 +88,8 @@ pub mod client;
 mod http;
 mod structs;
 
+pub use structs::PteroObject;
+
 use reqwest::StatusCode;
 
 /// The result type for errors produced by this crate

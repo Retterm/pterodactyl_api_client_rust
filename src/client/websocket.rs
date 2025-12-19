@@ -41,6 +41,15 @@ pub trait PteroWebSocketListener<H: PteroWebSocketHandle>: Send {
         async { Ok(()) }
     }
 
+    /// Called when a server install output message is received
+    fn on_install_output(
+        &mut self,
+        _handle: &mut H,
+        _output: &str,
+    ) -> impl Future<Output = crate::Result<()>> + Send {
+        async { Ok(()) }
+    }
+
     /// Called when a server status message is received
     fn on_status(
         &mut self,
@@ -168,6 +177,8 @@ enum IncomingEvent {
     Status,
     #[serde(rename = "console output")]
     ConsoleOutput,
+    #[serde(rename = "install output")]
+    InstallOutput,
     #[serde(rename = "stats")]
     Stats,
     #[serde(rename = "token expiring")]
@@ -186,12 +197,26 @@ where
     async fn run_loop(mut self, token: String) -> crate::Result<()> {
         self.auth(token).await?;
         while let Some(message) = self.socket.next().await {
-            if let Message::Text(message) = message? {
-                if self.handle_message(message.to_string()).await? {
+            match message? {
+                Message::Text(text) => {
+                    if self.handle_message(text.to_string()).await? {
+                        break;
+                    }
+                }
+                Message::Close(_) => {
+                    // Remote endpoint closed the connection gracefully.
                     break;
                 }
-            } else {
-                return Err(crate::Error::UnexpectedMessage);
+                Message::Ping(payload) => {
+                    // Respond to ping frames to keep the connection alive.
+                    self.socket.send(Message::Pong(payload)).await?;
+                }
+                Message::Pong(_) => {
+                    // Ignore pong frames.
+                }
+                _ => {
+                    return Err(crate::Error::UnexpectedMessage);
+                }
             }
         }
         Ok(())
@@ -247,6 +272,18 @@ where
                 for output in message.args {
                     self.listener
                         .on_console_output(&mut handle, &output)
+                        .await?;
+                }
+                Ok(handle.stop)
+            }
+            IncomingEvent::InstallOutput => {
+                let mut handle = WebSocketHandleImpl {
+                    socket: &mut self.socket,
+                    stop: false,
+                };
+                for output in message.args {
+                    self.listener
+                        .on_install_output(&mut handle, &output)
                         .await?;
                 }
                 Ok(handle.stop)

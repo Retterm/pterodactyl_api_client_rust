@@ -190,6 +190,7 @@ impl<'de> Deserialize<'de> for PteroFilePermissions {
             file_type: next_char!(chars,
                 'd' => PteroFileType::Directory,
                 'l' => PteroFileType::Symlink,
+                'L' => PteroFileType::Symlink,
                 '-' => PteroFileType::Normal
             ),
             owner: read_user::<D>(&mut chars)?,
@@ -392,7 +393,7 @@ impl Server<'_> {
         data: impl Into<Body>,
     ) -> crate::Result<()> {
         self.client
-            .request_with_body::<EmptyBody, _>(
+            .request_with_text_body::<EmptyBody, _>(
                 Method::POST,
                 &format!(
                     "servers/{}/files/write?file={}",

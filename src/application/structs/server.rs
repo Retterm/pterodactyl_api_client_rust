@@ -1,4 +1,7 @@
+use crate::application::structs::allocation::AllocationSettings;
+use crate::application::structs::utils::deserialize_installed;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 
 /// Represents a server in the application API
@@ -17,6 +20,9 @@ pub struct ServerStruct {
     pub name: String,
     /// The server's description
     pub description: String,
+    /// The server's status
+    #[serde(default)]
+    pub status: Option<String>,
     /// Whether the server is suspended
     pub suspended: bool,
     /// The server's resource limits
@@ -35,10 +41,6 @@ pub struct ServerStruct {
     pub egg: u32,
     /// The server's container settings
     pub container: ServerContainer,
-    /// The server's updated at timestamp
-    pub updated_at: String,
-    /// The server's created at timestamp
-    pub created_at: String,
 }
 
 /// Represents a server's resource limits
@@ -57,6 +59,9 @@ pub struct ServerLimits {
     /// The server's threads limit (if any)
     #[serde(default)]
     pub threads: Option<u32>,
+    /// Whether OOM killer is disabled for the server
+    #[serde(default)]
+    pub oom_disabled: Option<bool>,
 }
 
 /// Represents a server's feature limits
@@ -78,10 +83,11 @@ pub struct ServerContainer {
     pub startup_command: String,
     /// The server's image
     pub image: String,
-    /// The server's installed state
+    /// The server's installed state (0 for not installed, 1 for installed)
+    #[serde(deserialize_with = "deserialize_installed")]
     pub installed: bool,
     /// The server's environment variables
-    pub environment: HashMap<String, String>,
+    pub environment: HashMap<String, Value>,
 }
 
 /// Request body for creating a new server
@@ -107,13 +113,6 @@ pub struct CreateServerRequest {
     pub allocation: AllocationSettings,
 }
 
-/// Allocation settings for server creation
-#[derive(Debug, Serialize)]
-pub struct AllocationSettings {
-    /// The default allocation ID
-    pub default: u32,
-}
-
 /// Response for server creation
 #[derive(Debug, Deserialize)]
 pub struct CreateServerResponse {
@@ -121,4 +120,4 @@ pub struct CreateServerResponse {
     pub object: String,
     /// The server's attributes
     pub attributes: ServerStruct,
-} 
+}
